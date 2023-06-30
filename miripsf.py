@@ -173,7 +173,8 @@ class MIRIPSF():
                              name='',
                              write_psfonly=False,
                              oversample_factor=2,    #1,  is two for Jens' new 55mas PSF
-                             boost_factor=1.):
+                             boost_factor=1.,
+                             debug=False):
         """Insert PSF into file (inplace).
         """
         if ra_list is None:
@@ -195,7 +196,8 @@ class MIRIPSF():
 
                 # find pixel coord of ra, dec and determine integer and fractional part
                 wcs = WCS(cal_h)
-                x, y = wcs.all_world2pix(ra, dec, 0)
+                x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
+                print(ra, dec, x, y)
 
                 # load input psf
                 psf = get_psf_model(psf_which, y=y)
@@ -209,6 +211,10 @@ class MIRIPSF():
                     # this means that we need to increase the (x,y) pixel coords by the same factor
                     x *= oversample_factor
                     y *= oversample_factor
+                    # for even oversampling the pixel center then shifts by 0.5 (i.e. center is now corner, etc.)
+                    # i don't understand why this is a + (?) but that gives correct results.
+                    x += 0.5 * ((oversample_factor + 1)%2)
+                    y += 0.5 * ((oversample_factor + 1)%2)
 
                 xf, xi = np.modf(x)
                 xi = int(xi)
@@ -233,20 +239,38 @@ class MIRIPSF():
                 tmpl[yi - psf.shape[0]//2: yi + psf.shape[0]//2 + 1,
                      xi - psf.shape[1]//2: xi + psf.shape[1]//2 + 1] = psf
 
+                if debug:
+                    tmp = fits.PrimaryHDU(tmpl)
+                    tmp.writeto(fname.replace('.fits', f'{name}-debug-insert.fits'), overwrite=True)
+
                 # this is the original and gives the best, but not perfect results (v3)
                 # but the //2. on the yf,xf means its essentially ignored???
-                tmpl_shift = shift(tmpl, (yf//2. + 1, xf//2. + 1), mode='constant', cval=0)
+                # also I don't understand why we need the +1...
+                # tmpl_shift = shift(tmpl, (yf//2. + 1, xf//2. + 1), mode='constant', cval=0)
                 # this seems correct to me but doesn't work:
                 # tmpl_shift = shift(tmpl, (yf, xf), mode='constant', cval=0)
                 # this produces better results, maybe even better than the first line (though not fully..), but its still not perfect...
                 # tmpl_shift = shift(tmpl, (yf + 1, xf + 1), mode='constant', cval=0)
+
+                # debug
+                tmpl_shift = shift(tmpl, (yf, xf), mode='constant', cval=0)
+
+
+                if debug:
+                    tmp = fits.PrimaryHDU(tmpl_shift)
+                    tmp.writeto(fname.replace('.fits', f'{name}-debug-insert-shift.fits'), overwrite=True)
 
                 # make PSF brighter
                 tmpl_shift *= boost_factor
 
                 if oversample_factor > 1:
                     # if we oversample, we now downsample
+                    ### NOTE zoom may actually be somewhat inaccurate - may need to replace with alternative
                     tmpl_shift = zoom(tmpl_shift, 1./oversample_factor, mode='constant', cval=0)
+
+                if debug:
+                    tmp = fits.PrimaryHDU(tmpl_shift)
+                    tmp.writeto(fname.replace('.fits', f'{name}-debug-insert-shift-downsample.fits'), overwrite=True)
 
                 # add tmpl to data
                 hdu[1].data += tmpl_shift
@@ -300,7 +324,7 @@ class MIRIPSF():
         shutil.copy2(filename , self.procdir)
 
         if clean:
-            os.rename(filename, os.path.join(self.img3dir_clean, self.CLEAN_FILE))
+            shutil.move(filename, os.path.join(self.img3dir_clean, self.CLEAN_FILE))
 
 
     def _subtract_original(self, psf_inserted=None):
@@ -344,7 +368,7 @@ class MIRIPSF():
 
             # find pixel coord of ra, dec and determine integer and fractional part
             wcs = WCS(cal_h)
-            x, y = wcs.all_world2pix(ra, dec, 0)
+            x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
             # the positions should be integers here by construction,
             # but we round because the wcs can give (x-1).99999 values
             xi = int(np.round(x,0))
@@ -408,7 +432,7 @@ class MIRIPSF():
         ra_center, dec_center = [], []
         for ra, dec in zip(self.ra_list, self.dec_list):
 
-            x, y = wcs_clean.all_world2pix(ra, dec, 0)
+            x, y = wcs_clean.all_world2pix(ra, dec, 0, tolerance=1e-6)
             xi, yi = int(np.round(x,0)), int(np.round(y,0))
 
             ra_cent, dec_cent = wcs_clean.all_pix2world(xi, yi, 0)
