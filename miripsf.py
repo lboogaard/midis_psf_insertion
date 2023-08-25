@@ -10,6 +10,9 @@ import glob
 import numpy as np
 from scipy.ndimage import shift, zoom
 
+from skimage.transform import downscale_local_mean
+from photutils.centroids import centroid_2dg, centroid_sources
+
 from astropy.wcs import WCS
 from astropy.io import fits
 
@@ -134,7 +137,7 @@ class MIRIPSF():
         self._subtract_original()
 
         # cutout and normalise inserted psf
-        self._cutout_psf(pixel_scale_ratio=0.06/self.pixscale)
+        self._cutout_psf(pixel_scale_ratio=0.055/self.pixscale)  # scale of the input psf image
 
         if cleanup:
             # cleanup img2dir and img3dir
@@ -142,7 +145,7 @@ class MIRIPSF():
 
 
     ### INSERTION
-    def _prep_img2dir(self, clean=False, drop_unnecessary_exts=False):
+    def _prep_img2dir(self, clean=False, drop_unnecessary_exts=False, slice_only=slice(None)):
         """First copy the files to the img2dir where we run the pipeline."""
         print('prep_img2dir')
         if clean:
@@ -152,16 +155,16 @@ class MIRIPSF():
 
         cdine(img2dir)
 
-        for f in self.INPUT_FILES:
+        for f in self.INPUT_FILES[slice_only]:
             shutil.copy2(f, img2dir)
 
         if drop_unnecessary_exts:
             self._drop_unnecessary_exts(clean=clean)
 
 
-    def _insert_psf_in_images(self, slice_upto=None, **kwargs):
+    def _insert_psf_in_images(self, slice_only=slice(None), **kwargs):
         print('insert_psf_in_images')
-        for f in self.files[:slice_upto]:
+        for f in self.files[slice_only]:
             self._insert_psf_in_image(f, self.psf_which, **kwargs)
 
 
@@ -205,6 +208,13 @@ class MIRIPSF():
                     print('coord not in psf, skipping')
                     continue
 
+                xf, xi = np.modf(x)
+                xi = int(xi)
+                yf, yi = np.modf(y)
+                yi = int(yi)
+
+                print('pix pos (int, frac)-part of ra, dec', (xi, xf), (yi, yf))
+
                 if oversample_factor > 1:
                     # the psf is oversampled by a factor, the way we treat this is by
                     # oversampling the image to input in, adding the psf, and then downsampling again
@@ -212,7 +222,8 @@ class MIRIPSF():
                     x *= oversample_factor
                     y *= oversample_factor
                     # for even oversampling the pixel center then shifts by 0.5 (i.e. center is now corner, etc.)
-                    # i don't understand why this is a + (?) but that gives correct results.
+                    # I don't understand why this is a + and not - (?) but that gives correct results.
+                    # it's because of the 0 indexing
                     x += 0.5 * ((oversample_factor + 1)%2)
                     y += 0.5 * ((oversample_factor + 1)%2)
 
@@ -221,7 +232,7 @@ class MIRIPSF():
                 yf, yi = np.modf(y)
                 yi = int(yi)
 
-                print('pix pos (int, frac)-part of ra, dec', (xi, xf), (yi, yf))
+                print('pix pos (int, frac)-part of ra, dec', (xi, xf), (yi, yf), 'after oversampling')
 
                 if (yi < psf.shape[0]//2 or
                     xi < psf.shape[1]//2 or
@@ -243,30 +254,22 @@ class MIRIPSF():
                     tmp = fits.PrimaryHDU(tmpl)
                     tmp.writeto(fname.replace('.fits', f'{name}-debug-insert.fits'), overwrite=True)
 
-                # this is the original and gives the best, but not perfect results (v3)
-                # but the //2. on the yf,xf means its essentially ignored???
-                # also I don't understand why we need the +1...
-                # tmpl_shift = shift(tmpl, (yf//2. + 1, xf//2. + 1), mode='constant', cval=0)
-                # this seems correct to me but doesn't work:
-                # tmpl_shift = shift(tmpl, (yf, xf), mode='constant', cval=0)
-                # this produces better results, maybe even better than the first line (though not fully..), but its still not perfect...
-                # tmpl_shift = shift(tmpl, (yf + 1, xf + 1), mode='constant', cval=0)
-
-                # debug
-                tmpl_shift = shift(tmpl, (yf, xf), mode='constant', cval=0)
-
+                # this is now correct
+                tmpl_shift = shift(tmpl, (yf, xf), order=3, mode='constant', cval=0, prefilter=True)
 
                 if debug:
                     tmp = fits.PrimaryHDU(tmpl_shift)
                     tmp.writeto(fname.replace('.fits', f'{name}-debug-insert-shift.fits'), overwrite=True)
 
-                # make PSF brighter
-                tmpl_shift *= boost_factor
-
                 if oversample_factor > 1:
                     # if we oversample, we now downsample
-                    ### NOTE zoom may actually be somewhat inaccurate - may need to replace with alternative
-                    tmpl_shift = zoom(tmpl_shift, 1./oversample_factor, mode='constant', cval=0)
+                    ### NOTE zoom may actually be somewhat inaccurate - may need to replace with alternative?
+                    #tmpl_shift = zoom(tmpl_shift, 1./oversample_factor, mode='constant', cval=0, order=3)  # order 1 is fine here, for a factor 2 downsample
+                    # the right thing to do is of course just to average 2x2, which we can accomplish with downscale_local_mean
+                    tmpl_shift = downscale_local_mean(tmpl_shift, oversample_factor, cval=0)
+
+                # make PSF brighter
+                tmpl_shift *= boost_factor
 
                 if debug:
                     tmp = fits.PrimaryHDU(tmpl_shift)
@@ -376,7 +379,7 @@ class MIRIPSF():
             assert abs(xi - x) < 0.01 and (yi - y) < 0.01, "psfs are not at pixel centers to 0.01 level {} {}".format(x,y)
 
             if cutout_size is None:
-                cutout_size = np.array(np.round(np.array(original_cutout_size) * pixel_scale_ratio), dtype=int)
+                cutout_size = np.array(np.ceil(np.array(original_cutout_size) * pixel_scale_ratio / 2) * 2 + 1, dtype=int)  # round to odd integer
 
             # cutout psf - the size of original
             out = cal[yi - cutout_size[0]//2: yi + cutout_size[0]//2 + 1,
@@ -413,6 +416,14 @@ class MIRIPSF():
             print('norm', sumout, 'after norm', np.sum(out))
             hdu_out.writeto(psf_recovered.replace('.fits', f'{coordindex}-cutout-bg-norm.fits'), overwrite=True)
 
+            # add extra step to refine the centroid
+            xcenter, ycenter = cutout_size[0]//2, cutout_size[1]//2
+            xcentroid, ycentroid = centroid_sources(out, ycenter, xcenter,
+                                                     box_size=cutout_size//5 + 1, centroid_func=centroid_2dg)
+            hdu_out.data = shift(out, (ycenter-ycentroid, xcenter-xcentroid), order=3, mode='constant', cval=0, prefilter=True)
+            print('center', xcenter, ycenter, 'centroid', xcentroid, ycentroid)
+            hdu_out.writeto(psf_recovered.replace('.fits', f'{coordindex}-cutout-bg-norm-centered.fits'), overwrite=True)
+
 
     def _cleanup(self):
         if self.run_clean:
@@ -437,7 +448,8 @@ class MIRIPSF():
 
             ra_cent, dec_cent = wcs_clean.all_pix2world(xi, yi, 0)
 
-            print(ra, dec, x, y, xi, yi, ra_cent, dec_cent)
+            print('original', ra, dec, x, y)
+            print('updated', ra_cent, dec_cent, xi, yi)
 
             ra_center.append(ra_cent)
             dec_center.append(dec_cent)
@@ -450,6 +462,17 @@ class MIRIPSF():
     def _drop_unnecessary_exts(self, clean=False):
 
         # this doesn't work, the pipeline won't run w/o them
+
+
+        # ALTERNATIVE FROM JAMES (NOT TESTED YET):
+        # from jwst import datamodels
+
+
+        # model = datamodels.open("jw001234_blah_blah_cal.fits")
+        # del model.var_poisson
+        # del model.var_flat
+        # del model.var_rnoise
+        # model.save("test.fits")
         
         print("drop_unnecessary_exts")
 
