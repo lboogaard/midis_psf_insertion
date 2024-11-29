@@ -24,11 +24,11 @@ from jwst import datamodels
 def get_psf_model(which='jens-v6', y=None, verbose=True):
 
     if which == 'jens-v5':
-        with fits.open ('/Users/boogaard/Sterrenkunde/Instruments/JWST/DATA/1283/MIRI/PSF-hudf/Jens-Stacks/v5-29mar23/MIRI_LMC_55mas_emp_psf.fits') as hdu:
+        with fits.open (f'{DATA_PATH}/PSF-hudf/Jens-Stacks/v5-29mar23/MIRI_LMC_55mas_emp_psf.fits') as hdu:
             psf = hdu[0].data
 
     elif which == 'jens-v6':
-        with fits.open ('/Users/boogaard/Sterrenkunde/Instruments/JWST/DATA/1283/MIRI/PSF-hudf/Jens-Stacks/v6-12jun23/MIRI_LMC_55mas_emp_final_psf.fits') as hdu:
+        with fits.open (f'{DATA_PATH}/PSF_hudf/Jens-Stacks/v6-12jun23/MIRI_LMC_55mas_emp_final_psf.fits') as hdu:
             # y coordinate dependent psf
             if 0 <= y <= 341:
                 ext = 1
@@ -86,7 +86,7 @@ class MIRIPSF():
         print(self.ra_list, self.dec_list, self.img2dir, self.img3dir, self.procdir)
 
         # hardcoded setup
-        INPUT_DIRECTORY = '/Users/boogaard/Sterrenkunde/Instruments/JWST/DATA/1283/MIRI/PSF-hudf/Copenhagen/cal_files/'
+        INPUT_DIRECTORY = f'{DATA_PATH}/PSF-hudf/Copenhagen/cal_files/'
         self.INPUT_FILES = []
         for i in range(96):
             self.INPUT_FILES.append(os.path.join(INPUT_DIRECTORY, f'HUDF_F560W_exp{i:02d}_cal.fits'))
@@ -99,7 +99,7 @@ class MIRIPSF():
             print(self.img2dir_clean, self.img3dir_clean)
         else:
             self.run_clean = False
-            self.CLEAN_FILE = run_clean #'/Users/boogaard/Sterrenkunde/Instruments/JWST/DATA/1283/MIRI/PSF-hudf/Insertion/1.8.4_automatic_runs/v1/IMG3-clean/HUDF_F560W_i2d.fits'
+            self.CLEAN_FILE = run_clean #f'{DATA_PATH}/PSF-hudf/Insertion/1.8.4_automatic_runs/v1/IMG3-clean/HUDF_F560W_i2d.fits'
 
         # individual exposure filenames to process - these only exist after running self._prep_img2dir
         self.files = []
