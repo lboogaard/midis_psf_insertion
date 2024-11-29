@@ -16,7 +16,7 @@ from photutils.centroids import centroid_2dg, centroid_sources
 from astropy.wcs import WCS
 from astropy.io import fits
 
-from .pipeline_steven_edit_lab import run_Image3Pipeline
+from .pipeline import run_Image3Pipeline
 
 from jwst import datamodels
 
