@@ -1,4 +1,4 @@
-"""There is still something subtly wrong with the shifting.
+"""There may still be something subtly wrong with the shifting (?)
 """
 
 from my_utils import cdine
@@ -17,6 +17,8 @@ from astropy.wcs import WCS
 from astropy.io import fits
 
 from .pipeline_steven_edit_lab import run_Image3Pipeline
+
+from jwst import datamodels
 
 
 def get_psf_model(which='jens-v6', y=None, verbose=True):
@@ -188,7 +190,9 @@ class MIRIPSF():
         assert isinstance(oversample_factor, int), "oversample_factor must be integer"
 
         # load cal file to insert
-        with fits.open (fname) as hdu:
+        cal_gwcs = datamodels.open(fname)
+        wcs = cal_gwcs.meta.wcs
+        with fits.open(fname) as hdu:
             cal_h = hdu[1].header
             cal = hdu[1].data
 
@@ -198,8 +202,9 @@ class MIRIPSF():
             for ra, dec in zip(ra_list, dec_list):
 
                 # find pixel coord of ra, dec and determine integer and fractional part
-                wcs = WCS(cal_h)
-                x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
+                # wcs = WCS(cal_h)
+                #x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
+                x, y = wcs.backward_transform(ra, dec)
                 print(ra, dec, x, y)
 
                 # load input psf
@@ -361,6 +366,8 @@ class MIRIPSF():
         if dec_list is None:
             dec_list = self.dec_list
 
+        cal_gwcs = datamodels.open(psf_recovered)
+        wcs = cal_gwcs.meta.wcs
         with fits.open(psf_recovered) as hdu:
             cal_h = hdu[1].header
             cal = hdu[1].data
@@ -370,16 +377,19 @@ class MIRIPSF():
             coordindex += 1
 
             # find pixel coord of ra, dec and determine integer and fractional part
-            wcs = WCS(cal_h)
-            x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
+            #wcs = WCS(cal_h)
+            # x, y = wcs.all_world2pix(ra, dec, 0, tolerance=1e-6)
+            x, y = wcs.backward_transform(ra, dec)
             # the positions should be integers here by construction,
             # but we round because the wcs can give (x-1).99999 values
             xi = int(np.round(x,0))
             yi = int(np.round(y,0))
             assert abs(xi - x) < 0.01 and (yi - y) < 0.01, "psfs are not at pixel centers to 0.01 level {} {}".format(x,y)
 
+            round_odd = lambda x: np.array(np.ceil(x) * 2 + 1, dtype=int)  # round to odd integer
+
             if cutout_size is None:
-                cutout_size = np.array(np.ceil(np.array(original_cutout_size) * pixel_scale_ratio / 2) * 2 + 1, dtype=int)  # round to odd integer
+                cutout_size = round_odd(np.array(original_cutout_size) * pixel_scale_ratio / 2)
 
             # cutout psf - the size of original
             out = cal[yi - cutout_size[0]//2: yi + cutout_size[0]//2 + 1,
@@ -419,7 +429,7 @@ class MIRIPSF():
             # add extra step to refine the centroid
             xcenter, ycenter = cutout_size[0]//2, cutout_size[1]//2
             xcentroid, ycentroid = centroid_sources(out, ycenter, xcenter,
-                                                     box_size=cutout_size//5 + 1, centroid_func=centroid_2dg)
+                                                     box_size=round_odd(cutout_size / 5), centroid_func=centroid_2dg)
             hdu_out.data = shift(out, (ycenter-ycentroid, xcenter-xcentroid), order=3, mode='constant', cval=0, prefilter=True)
             print('center', xcenter, ycenter, 'centroid', xcentroid, ycentroid)
             hdu_out.writeto(psf_recovered.replace('.fits', f'{coordindex}-cutout-bg-norm-centered.fits'), overwrite=True)
@@ -437,16 +447,20 @@ class MIRIPSF():
 
         print('updating coordinates to pixel centers in clean image')
 
-        with fits.open(self.CLEAN_FILE) as hdu:
-            wcs_clean = WCS(hdu['SCI'].header)
+        cal_gwcs = datamodels.open(self.CLEAN_FILE)
+        wcs_clean = cal_gwcs.meta.wcs
+        # with fits.open(self.CLEAN_FILE) as hdu:
+        #     wcs_clean = WCS(hdu['SCI'].header)
 
         ra_center, dec_center = [], []
         for ra, dec in zip(self.ra_list, self.dec_list):
 
-            x, y = wcs_clean.all_world2pix(ra, dec, 0, tolerance=1e-6)
+            #x, y = wcs_clean.all_world2pix(ra, dec, 0, tolerance=1e-6)
+            x, y = wcs_clean.backward_transform(ra, dec)
             xi, yi = int(np.round(x,0)), int(np.round(y,0))
 
-            ra_cent, dec_cent = wcs_clean.all_pix2world(xi, yi, 0)
+            #ra_cent, dec_cent = wcs_clean.all_pix2world(xi, yi, 0)
+            ra_cent, dec_cent = wcs_clean(xi, yi)
 
             print('original', ra, dec, x, y)
             print('updated', ra_cent, dec_cent, xi, yi)
@@ -473,7 +487,7 @@ class MIRIPSF():
         # del model.var_flat
         # del model.var_rnoise
         # model.save("test.fits")
-        
+
         print("drop_unnecessary_exts")
 
         EXTS = ['ERR', 'VAR_POISSON', 'VAR_RNOISE', 'VAR_FLAT']
