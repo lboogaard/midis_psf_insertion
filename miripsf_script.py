@@ -12,10 +12,11 @@ reload(miripsf)
 import miripsf.miripsf as M
 reload(M)
 
+# overall relative path - check code below for some hard-coded links inside this
 DATA_PATH="../PSF_hudf/Insertion/"
 
 
-########## clean run - only need to run this once with new pipeline install
+########## clean run (to subtract off inserted run) - only need to run this once and then refer to it below
 img2dir = f'{DATA_PATH}/1.8.4_automatic_runs/v1/IMG2-clean/'
 img3dir = f'{DATA_PATH}/1.8.4_automatic_runs/v1/IMG3-clean/'
 procdir = f'{DATA_PATH}/1.8.4_automatic_runs/v1/clean/'
@@ -25,7 +26,7 @@ m_clean._prep_img2dir()
 m_clean._run_pipeline()
 
 
-##########  actual running
+########## insertion run
 
 pixscale = 60  # mas
 img2dir = f'{DATA_PATH}/1.8.4_automatic_runs/v6/IMG2-9psfs-{pixscale}mas/'
@@ -48,7 +49,7 @@ ra = coordinate_list[:,0]
 dec = coordinate_list[:,1]
 
 m_9psfs = M.MIRIPSF(ra, dec, img2dir, img3dir, procdir, pixscale=pixscale/1000.,  # arcsec
-                    run_clean = f'{DATA_PATH}/1.8.4_automatic_runs/v6/9psfs-{pixscale}mas/HUDF_F560W_i2d.fits')
+                    run_clean = f'{DATA_PATH}/1.8.4_automatic_runs/v6/9psfs-{pixscale}mas/HUDF_F560W_i2d.fits')  # file from the clean run (i.e. nothing inserted)
 
 m_9psfs._update_coords_to_pixel_centers_in_clean()
 m_9psfs._prep_img2dir()

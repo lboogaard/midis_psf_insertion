@@ -20,6 +20,9 @@ from .pipeline_steven_edit_lab import run_Image3Pipeline
 
 from jwst import datamodels
 
+# overall relative path - check code below for some hard-coded links inside this
+DATA_PATH="../"
+
 
 def get_psf_model(which='jens-v6', y=None, verbose=True):
 
