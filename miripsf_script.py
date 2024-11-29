@@ -12,6 +12,7 @@ reload(miripsf)
 import miripsf.miripsf as M
 reload(M)
 
+# hardcoded
 # overall relative path - check code below for some hard-coded links inside this
 DATA_PATH="../PSF_hudf/Insertion/"
 

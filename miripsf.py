@@ -25,7 +25,7 @@ DATA_PATH="../"
 
 
 def get_psf_model(which='jens-v6', y=None, verbose=True):
-
+    # hardcoded
     if which == 'jens-v5':
         with fits.open (f'{DATA_PATH}/PSF-hudf/Jens-Stacks/v5-29mar23/MIRI_LMC_55mas_emp_psf.fits') as hdu:
             psf = hdu[0].data
@@ -60,7 +60,7 @@ class MIRIPSF():
                  procdir,
                  psf_which='jens-v6',
                  run_clean=True,
-                 master_filename='HUDF_F560W_i2d.fits',
+                 master_filename='HUDF_F560W_i2d.fits', # hardcoded (name comes out of pipeline)
                  pixscale=0.06, pixfrac=1):
 
         # we don't want astropy coordinates here,
