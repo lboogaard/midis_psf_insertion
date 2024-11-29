@@ -62,7 +62,7 @@ print('CRDS URL: ',os.environ["CRDS_SERVER_URL"])
 print('CRDS PATH: ',os.environ["CRDS_PATH"])
 
 ## abs_refcat from clean run
-abs_refcat_clean = '/Users/boogaard/Sterrenkunde/Instruments/JWST/DATA/1283/MIRI/PSF-hudf/Insertion/1.8.4/asns-clean/fit_gaiadr2_ref_F560W.ecsv'
+abs_refcat_clean = '../PSF-hudf/Insertion/1.8.4/asns-clean/fit_gaiadr2_ref_F560W.ecsv'
 
 ###########################
 
